@@ -12,8 +12,10 @@ The project is conducted in collaboration with **EigenDrug Inc.**, as a real-wor
 
 ## Dependencies
 
-- astral uv
-- hmmer==3.4
+- astral uv (https://docs.astral.sh/uv)
+- AbBiBench (https://github.com/MSBMI-SAFE/AbBiBench)
+- hmmer==3.4 (https://github.com/EddyRivasLab/hmmer)
+- ANARCI (https://github.com/oxpig/ANARCI)
 
 ## installation
 
