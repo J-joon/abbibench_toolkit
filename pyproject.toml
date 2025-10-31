@@ -48,3 +48,6 @@ packages = ["src/abbibench_toolkit"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[project.scripts]
+compute_correlation = "abbibench_toolkit.scripts.compute_corr:entrypoint"
