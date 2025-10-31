@@ -22,11 +22,6 @@ git clone https://github.com/J-joon/abbibench_toolkit && cd abbibench_toolkit
 uv sync
 ```
 
-## Usage
-
-```
-```
-
 ## directory structure
 
 ```
@@ -34,6 +29,15 @@ uv sync
 |--./data # dataset
 |--./outputs # output results
 ```
+
+## Usage
+After running get_model_log_likelihood.py for a model, please make sure the resulting output csv file be under ./abbibench_toolkit/outputs
+
+```
+uv run compute_correlation —model-name diffab —dataset-name aayl49_ML
+# example output: rho: 0.0012, p-value: 9.1073e-01
+```
+
 
 ## Download Dataset
 
