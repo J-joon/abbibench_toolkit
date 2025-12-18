@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +24,7 @@ OFFICIAL_GROUPS: Dict[str, List[str]] = {
     "Biophysics": ["epitopeSA", "FoldX"],
 }
 
-# Dataset order (this matches the wider official table you pasted earlier)
+# Dataset order (matches the official table order)
 DEFAULT_DATASET_ORDER: List[str] = [
     "1mhp",
     "1mlc",
@@ -43,20 +42,20 @@ DEFAULT_DATASET_ORDER: List[str] = [
     "aayl52",
 ]
 
-# Special target columns for specific models (official script)
+# Special target columns for specific models
 SPECIAL_COLUMNS: Dict[str, str] = {
     "FoldX": "dg",
     "epitopeSA": "EpitopeSASA (mut)",
 }
 
-# Fixbb models and their source columns (official script)
+# Fixbb models and their source columns
 FIXBB_SOURCES: Dict[str, Tuple[str, str]] = {
     "MEAN_fixbb": ("MEAN", "log-likelihood (fixed backbone)"),
     "dyMEAN_fixbb": ("dyMEAN", "log-likelihood (fixed backbone)"),
     "diffab_fixbb": ("diffab", "log-likelihood (fixed backbone)"),
 }
 
-# Models whose target values are negated before correlation (official script)
+# Models whose target values are negated before correlation
 NEGATE_MODELS = {"epitopeSA", "FoldX"}
 
 
@@ -67,18 +66,12 @@ NEGATE_MODELS = {"epitopeSA", "FoldX"}
 _PREFIX_RE = re.compile(r"^(AHL|HLA|LAH)_")
 
 def normalize_model_name(model_part: str) -> str:
-    """
-    Make local filenames compatible with official leaderboard keys:
-    - Drop chain-order prefixes: AHL_/HLA_/LAH_
-    - Keep the rest as-is
-    """
+    """Drop chain-order prefixes (AHL_/HLA_/LAH_) to match official keys."""
     return _PREFIX_RE.sub("", model_part)
 
 
 def normalize_dataset_name(dataset_part: str) -> str:
-    """
-    Map local dataset ids to official dataset ids.
-    """
+    """Map local dataset ids to official dataset ids."""
     aliases = {
         "1mhp_LC": "1mhp",
         "aayl50_LC": "aayl50",
@@ -103,6 +96,10 @@ def medal_rank(i: int) -> str:
         return f"🥉 {i}"
     return str(i)
 
+
+# -----------------------------
+# Parsing + metrics
+# -----------------------------
 
 def _parse_filename(filename: str) -> Optional[Tuple[str, str]]:
     """
@@ -134,16 +131,45 @@ def _first_existing_column(df: pd.DataFrame, candidates: Iterable[str]) -> Optio
 
 
 def _spearman_corr(binding_score: pd.Series, target_values: pd.Series) -> float:
-    """
-    Match official script behavior: pandas corr(method='spearman').
-    """
-    tmp = pd.concat([binding_score, target_values], axis=1)
-    # Pairwise drop NaNs is handled by corr, but we keep it explicit.
-    tmp = tmp.dropna()
+    """Match official behavior: pandas corr(method='spearman') after dropping NaNs."""
+    tmp = pd.concat([binding_score, target_values], axis=1).dropna()
     if len(tmp) == 0:
         return float("nan")
-    # If one column is constant, Spearman becomes NaN; keep as NaN.
     return float(tmp.corr(method="spearman").iloc[0, 1])
+
+
+def _format_float(x: object) -> str:
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return "-"
+    if isinstance(x, (float, np.floating, int, np.integer)):
+        return f"{float(x):.2f}"
+    return str(x)
+
+
+def _df_to_markdown_simple(df: pd.DataFrame) -> str:
+    """
+    Lightweight markdown table renderer (no external dependency like tabulate).
+    Assumes df contains display-ready values (strings or numbers).
+    """
+    cols = list(df.columns)
+    rows = [[_format_float(v) for v in df.iloc[i].tolist()] for i in range(len(df))]
+
+    # widths
+    col_widths = []
+    for j, c in enumerate(cols):
+        w = len(str(c))
+        for r in rows:
+            w = max(w, len(str(r[j])))
+        col_widths.append(w)
+
+    def _row_line(xs: List[str]) -> str:
+        parts = [f" {str(xs[j]).ljust(col_widths[j])} " for j in range(len(xs))]
+        return "|" + "|".join(parts) + "|"
+
+    header = _row_line([str(c) for c in cols])
+    sep = "|" + "|".join(["-" * (w + 2) for w in col_widths]) + "|"
+    body = "\n".join(_row_line(r) for r in rows)
+    return "\n".join([header, sep, body]) + "\n"
 
 
 # -----------------------------
@@ -152,7 +178,11 @@ def _spearman_corr(binding_score: pd.Series, target_values: pd.Series) -> float:
 
 @dataclass(frozen=True)
 class Args:
-    outputs_dir: Path = Path("./outputs")
+    # Root directory containing {data, outputs}. Artifacts will be written to <root>/artifacts by default.
+    root_dir: Path = Path(".")
+
+    # Optional override for outputs directory; if not set, uses <root>/outputs
+    outputs_dir: Optional[Path] = None
 
     # If provided, override dataset order
     dataset_order: Sequence[str] = tuple(DEFAULT_DATASET_ORDER)
@@ -160,32 +190,56 @@ class Args:
     # Drop any model row that has NaN in ANY dataset column
     drop_rows_with_nan: bool = True
 
-    out_csv: Path = Path("./artifacts/leaderboard.csv")
-    out_md: Path = Path("./artifacts/leaderboard.md")
+    # If True, include non-official models found in outputs as well (default: official-only)
+    include_nonofficial: bool = False
+
+    # If True, include datasets not in dataset_order (appended after the ordered ones)
+    include_unknown_datasets: bool = False
+
+    # Optional output overrides; if not set, uses <root>/artifacts/leaderboard.{csv,md}
+    out_csv: Optional[Path] = None
+    out_md: Optional[Path] = None
+
+    # Print extra diagnostics
+    verbose: bool = False
+
+
+def _resolve_paths(a: Args) -> Tuple[Path, Path, Path, Path]:
+    root = a.root_dir.resolve()
+    outputs = a.outputs_dir.resolve() if a.outputs_dir else (root / "outputs")
+    artifacts = root / "artifacts"
+    out_csv = a.out_csv.resolve() if a.out_csv else (artifacts / "leaderboard.csv")
+    out_md = a.out_md.resolve() if a.out_md else (artifacts / "leaderboard.md")
+    return root, outputs, out_csv, out_md
 
 
 def main(a: Args) -> None:
-    outdir = a.outputs_dir.resolve()
-    if not outdir.exists():
-        raise FileNotFoundError(f"outputs_dir not found: {outdir}")
-
+    root, outputs_dir, out_csv, out_md = _resolve_paths(a)
     dataset_order = list(a.dataset_order)
 
-    # Official model set to keep (skip baselines)
+    if not outputs_dir.exists():
+        raise FileNotFoundError(f"outputs_dir not found: {outputs_dir}")
+
+    # Official model set
     official_models: List[str] = []
     for _group, ms in OFFICIAL_GROUPS.items():
         official_models.extend(ms)
     official_models_set = set(official_models)
 
-    # Cache loaded CSVs keyed by (normalized_dataset, normalized_model)
-    # Note: multiple raw models may normalize to the same model (e.g., HLA_ProtGPT2 -> ProtGPT2).
-    # For the official leaderboard reproduction, we take the exact matching normalized model entries.
-    csv_cache: Dict[Tuple[str, str], pd.DataFrame] = {}
+    # Cache loaded CSVs keyed by (normalized_dataset, normalized_model) -> (path, df)
+    # Use newest mtime if duplicates exist.
+    csv_cache: Dict[Tuple[str, str], Tuple[Path, pd.DataFrame]] = {}
 
-    for filename in os.listdir(outdir):
-        if not filename.endswith(".csv"):
-            continue
-        parsed = _parse_filename(filename)
+    csv_paths = sorted(outputs_dir.rglob("*.csv"))
+    if a.verbose:
+        print(f"[INFO] root_dir     : {root}")
+        print(f"[INFO] outputs_dir  : {outputs_dir}")
+        print(f"[INFO] found csv    : {len(csv_paths)} files")
+
+    unknown_datasets_found: List[str] = []
+
+    for path in csv_paths:
+        parsed = _parse_filename(path.name)
         if parsed is None:
             continue
 
@@ -193,43 +247,65 @@ def main(a: Args) -> None:
         dataset_name = normalize_dataset_name(dataset_part)
         model_name = normalize_model_name(model_part)
 
-        # Keep only datasets we care about (optional but reduces noise)
+        # Dataset filtering
         if dataset_name not in dataset_order:
+            if a.include_unknown_datasets:
+                if dataset_name not in unknown_datasets_found:
+                    unknown_datasets_found.append(dataset_name)
+            else:
+                continue
+
+        # Model filtering (official-only by default)
+        if (not a.include_nonofficial) and (model_name not in official_models_set):
+            # allow base models needed for fixbb only if they are official anyway; this is mainly for safety.
             continue
 
-        # Keep only official models (skip baselines)
-        if model_name not in official_models_set and model_name not in FIXBB_SOURCES:
-            # FIXBB_SOURCES are computed later, not directly from model_name files,
-            # but allow base models to be loaded anyway.
-            pass
+        try:
+            df = pd.read_csv(path)
+        except Exception as e:
+            if a.verbose:
+                print(f"[WARN] failed to read CSV: {path} ({e})")
+            continue
 
-        df = pd.read_csv(outdir / filename)
-        # Use last-write-wins if duplicates exist; this is fine for your usage.
-        csv_cache[(dataset_name, model_name)] = df
+        key = (dataset_name, model_name)
+        if key in csv_cache:
+            old_path, _old_df = csv_cache[key]
+            if path.stat().st_mtime <= old_path.stat().st_mtime:
+                continue  # keep newer
+        csv_cache[key] = (path, df)
 
-    # Compute correlations (official behavior)
+    # Extend dataset order if unknown datasets are allowed
+    if a.include_unknown_datasets and unknown_datasets_found:
+        # preserve stable order for unknowns: sort lexicographically and append
+        for d in sorted(unknown_datasets_found):
+            if d not in dataset_order:
+                dataset_order.append(d)
+
+    # Compute correlations
+    # data[dataset][model] = corr
     data: Dict[str, Dict[str, float]] = {}
 
-    for (dataset_name, model_name), df in csv_cache.items():
-        if dataset_name not in data:
-            data[dataset_name] = {}
+    for (dataset_name, model_name), (_path, df) in csv_cache.items():
+        data.setdefault(dataset_name, {})
 
-        # Determine target column exactly as official script (after normalization)
+        # Determine target column
         target_col = "log-likelihood"
         if model_name in SPECIAL_COLUMNS:
             target_col = SPECIAL_COLUMNS[model_name]
 
-        # Try to be slightly robust if your columns differ by minor naming
+        # Robust column match
         if model_name == "FoldX":
-            # official expects 'dg'
             target_col = _first_existing_column(df, ["dg", "DG", "delta_g", "deltaG", "dG"]) or target_col
         elif model_name == "epitopeSA":
-            target_col = _first_existing_column(df, ["EpitopeSASA (mut)", "EpitopeSASA(mut)", "epitope_sasa_mut"]) or target_col
+            target_col = _first_existing_column(
+                df,
+                ["EpitopeSASA (mut)", "EpitopeSASA(mut)", "epitope_sasa_mut"],
+            ) or target_col
         else:
             target_col = _first_existing_column(df, ["log-likelihood", "log_likelihood"]) or target_col
 
+        # Fixbb handled later
         if model_name in FIXBB_SOURCES:
-            # Fixbb handled later (official script)
             continue
 
         if "binding_score" in df.columns and target_col in df.columns:
@@ -242,17 +318,16 @@ def main(a: Args) -> None:
             corr = _spearman_corr(binding_score, target_values)
             data[dataset_name][model_name] = corr
         else:
-            # Keep missing as NaN (no print spam by default)
             data[dataset_name][model_name] = float("nan")
 
-    # Handle fixbb models separately (official script)
+    # Handle fixbb models separately
     for fixbb_model, (base_model, ll_col) in FIXBB_SOURCES.items():
         for dataset_name in dataset_order:
-            if (dataset_name, base_model) not in csv_cache:
+            key = (dataset_name, base_model)
+            if key not in csv_cache:
                 continue
-            df = csv_cache[(dataset_name, base_model)]
 
-            # Robust column match for fixed-backbone LL
+            _path, df = csv_cache[key]
             ll_col_eff = _first_existing_column(
                 df,
                 [
@@ -268,38 +343,42 @@ def main(a: Args) -> None:
 
             if "binding_score" in df.columns and ll_col_eff in df.columns:
                 corr = _spearman_corr(df["binding_score"], df[ll_col_eff])
-                if dataset_name not in data:
-                    data[dataset_name] = {}
+                data.setdefault(dataset_name, {})
                 data[dataset_name][fixbb_model] = corr
 
-    # Convert to DataFrame like official script
+    # Convert to DataFrame (datasets as rows)
     result_df = pd.DataFrame.from_dict(data, orient="index")
 
-    # Ensure all official model columns exist
+    # Ensure all official model columns exist and maintain official order
     ordered_columns: List[str] = []
-    group_names: List[str] = []
-    group_sizes: List[int] = []
-
-    for group, cols in OFFICIAL_GROUPS.items():
-        group_names.append(group)
-        group_sizes.append(len(cols))
+    for _group, cols in OFFICIAL_GROUPS.items():
         ordered_columns.extend(cols)
 
-    for col in ordered_columns:
+    # If include_nonofficial, keep any extra columns too (appended after official)
+    extra_cols: List[str] = []
+    if a.include_nonofficial:
+        extra_cols = [c for c in result_df.columns if c not in ordered_columns]
+        extra_cols = sorted(extra_cols)
+
+    for col in ordered_columns + extra_cols:
         if col not in result_df.columns:
             result_df[col] = np.nan
 
-    # Reorder and reindex datasets
-    result_df = result_df[ordered_columns]
+    # Reorder columns and datasets
+    result_df = result_df[ordered_columns + extra_cols]
     result_df = result_df.reindex(dataset_order)
 
     # Build leaderboard table (models as rows, datasets as columns)
     table = result_df.transpose()  # index=model, columns=dataset
 
-    # Keep only official models (and only those that appear at least once)
-    table = table.loc[[m for m in ordered_columns if m in table.index]]
+    # Keep only rows we want
+    if a.include_nonofficial:
+        keep_rows = [m for m in (ordered_columns + extra_cols) if m in table.index]
+    else:
+        keep_rows = [m for m in ordered_columns if m in table.index]
+    table = table.loc[keep_rows]
 
-    # Drop rows with any NaN (as requested)
+    # Drop rows with any NaN (if requested)
     if a.drop_rows_with_nan:
         table = table.dropna(axis=0, how="any")
 
@@ -317,26 +396,36 @@ def main(a: Args) -> None:
     table.insert(0, "Rank", [medal_rank(i) for i in range(1, len(table) + 1)])
 
     # Write CSV (raw floats)
-    a.out_csv.parent.mkdir(parents=True, exist_ok=True)
-    table.reset_index(drop=True).to_csv(a.out_csv, index=False)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    table.reset_index(drop=True).to_csv(out_csv, index=False)
 
     # Write Markdown (pretty formatting)
     md = table.reset_index(drop=True).copy()
     for c in dataset_order:
         if c in md.columns:
-            md[c] = md[c].map(lambda x: "-" if pd.isna(x) else f"{x:.2f}")
-    md["Avg. Spearman ↑"] = md["Avg. Spearman ↑"].map(lambda x: "-" if pd.isna(x) else f"{x:.2f}")
+            md[c] = md[c].map(_format_float)
+    md["Avg. Spearman ↑"] = md["Avg. Spearman ↑"].map(_format_float)
 
-    a.out_md.parent.mkdir(parents=True, exist_ok=True)
-    a.out_md.write_text(md.to_markdown(index=False), encoding="utf-8")
+    out_md.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # may require 'tabulate' depending on pandas build
+        md_text = md.to_markdown(index=False)
+    except Exception:
+        md_text = _df_to_markdown_simple(md)
+    out_md.write_text(md_text, encoding="utf-8")
 
-    print(f"Wrote: {a.out_csv}")
-    print(f"Wrote: {a.out_md}")
-    print()
-    print(md.to_string(index=False))
+    print(f"Wrote: {out_csv}")
+    print(f"Wrote: {out_md}")
 
-def entrypoint():
+    if a.verbose:
+        print()
+        print(md.to_string(index=False))
+
+
+def entrypoint() -> None:
     main(tyro.cli(Args))
 
+
 if __name__ == "__main__":
-    entryponint()
+    entrypoint()
+
