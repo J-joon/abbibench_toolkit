@@ -172,6 +172,70 @@ To be automatically picked up by leaderboard generation:
 * No NaNs in the score column for evaluated rows.
 
 ---
+## 5) Usage
+
+This section describes the **standard user-facing commands** provided by the AbBibench Toolkit.
+All commands are executed via **astral uv**, and assume a project layout that follows the contracts above.
+
+install
+```bash
+uv pip install abbibench_toolkit@https://github.com/J-joon/abbibench_toolkit
+```
+
+### 5.1 Dataset Download
+
+
+#### Command
+
+```bash
+uv run abbibench-toolkit-download-dataset
+```
+
+#### Behavior
+
+* Downloads AbBiBench-compatible benchmark datasets.
+* Stores files under:
+
+```
+<root_dir>/
+  data/
+    binding_affinity/
+      <dataset>_benchmarking_data.csv
+```
+
+* Dataset IDs match those used by model execution and output naming.
+
+---
+
+### 5.2 Leaderboard Generation
+
+#### Assumptions
+
+```
+<root_dir>/
+  data/
+    binding_affinity/
+      <dataset>_benchmarking_data.csv
+  outputs/
+    <dataset>_benchmarking_data_<MODEL>_scores.csv
+```
+
+#### Command
+
+```bash
+uv run abbibench-toolkit-make-leaderboard
+```
+
+#### Behavior
+
+* Scans `outputs/` for valid prediction CSVs.
+* Matches predictions to GT data.
+* Computes Spearman correlation.
+* Applies model-specific post-processing if configured.
+* Produces a consolidated leaderboard.
+
+---
+
 
 # EigenDrug Project - SNU Creative Integrated Design 1 (Fall 2025)
 
