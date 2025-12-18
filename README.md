@@ -243,12 +243,6 @@ This project is part of the **Creative Integrated Design 1** course (Course Code
 
 The project is conducted in collaboration with **EigenDrug Inc.**, as a real-world industry assignment.
 
-## Author
-
-* **Name:** Jaejoon Kim
-* **Email:** [jjkim030309@gmail.com](mailto:jjkim030309@gmail.com)
-* Please contact via email for any inquiries or issues related to the project.
-
 ## Dependencies
 
 * astral uv ([https://docs.astral.sh/uv](https://docs.astral.sh/uv))
