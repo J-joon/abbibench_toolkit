@@ -54,3 +54,4 @@ allow-direct-references = true
 [project.scripts]
 abbibench-toolkit-make-leaderboard = "abbibench_toolkit.scripts.make_leaderboard:entrypoint"
 abbibench-toolkit-download-dataset = "abbibench_toolkit.scripts.download_dataset:entrypoint"
+abbibench-toolkit-new-model = "abbibench_toolkit.scripts.create_model_template:entrypoint"

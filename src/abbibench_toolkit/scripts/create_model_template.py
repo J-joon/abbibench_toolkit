@@ -435,7 +435,7 @@ def render_cli_py(*, project_pkg: str, display_name: str, entrypoint: str) -> st
 # Main
 # ----------------------------
 
-def main() -> None:
+def entrypoint() -> None:
     ap = argparse.ArgumentParser(description="Generate a uv-based AbBiBench model package template.")
     ap.add_argument("--name", required=True, help="Model display name (used in filenames, e.g., ProteinMPNN, MyModel)")
     ap.add_argument("--model-type", default="Other", help='Model type label (e.g., "Masked LM", "Inverse Folding")')
@@ -512,5 +512,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
-
+    entrypoint()
