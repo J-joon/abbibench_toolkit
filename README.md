@@ -179,7 +179,7 @@ All commands are executed via **astral uv**, and assume a project layout that fo
 
 install
 ```bash
-uv pip install abbibench_toolkit@https://github.com/J-joon/abbibench_toolkit
+uv pip install abbibench_toolkit@git+https://github.com/J-joon/abbibench_toolkit
 ```
 
 ### 5.1 Dataset Download
