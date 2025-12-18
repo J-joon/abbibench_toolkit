@@ -52,5 +52,5 @@ packages = ["src/abbibench_toolkit"]
 allow-direct-references = true
 
 [project.scripts]
-make_leaderboard = "abbibench_toolkit.scripts.make_leaderboard:entrypoint"
+abbibench-toollkit-make-leaderboard = "abbibench_toolkit.scripts.make_leaderboard:entrypoint"
 abbibench-toolkit-download-dataset = "abbibench_toolkit.scripts.download_dataset:entrypoint"
