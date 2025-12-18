@@ -7,7 +7,7 @@ name = "abbibench_toolkit"
 version = "2025.09.12"
 description = "abbibench made by Jaejoon Kim"
 readme = "README.md"
-requires-python = "==3.10.14"
+requires-python = ">=3.10"
 dependencies = [
 	"torch==2.2.0",
 	"torchvision==0.17.0",
@@ -23,6 +23,8 @@ dependencies = [
 	"transformers==4.48.1",
 	"pandas",
 	"scipy",
+	"tabulate>=0.9.0",
+        "abbibench_toolkit_core",
 ]
 
 [[tool.uv.index]]
@@ -43,6 +45,10 @@ torchaudio = [
 { index = "pytorch-cu118" },
 ]
 
+abbibench_toolkit_core = [
+{ path = "../abbibench_toolkit_core"},
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/abbibench_toolkit"]
 
@@ -50,4 +56,4 @@ packages = ["src/abbibench_toolkit"]
 allow-direct-references = true
 
 [project.scripts]
-compute_correlation = "abbibench_toolkit.scripts.compute_corr:entrypoint"
+make_leaderboard = "abbibench_toolkit.scripts.make_leaderboard:entrypoint"

@@ -1,40 +1,63 @@
-from huggingface_hub import list_repo_files, hf_hub_download
-from datasets import load_dataset, concatenate_datasets
-from tqdm import tqdm
-import biotite.structure.io as bsio
+#!/usr/bin/env python3
+"""
+Clone (download) the Hugging Face *dataset repository* into <root>/data.
 
-REPO = "AbBibench/Antibody_Binding_Benchmark_Dataset"
+- Repo is fixed: AbBibench/Antibody_Binding_Benchmark_Dataset
+- revision is fixed: main
+- Default root is current directory (.)
+- Output directory name is always "data"
 
-# 1. List all CSV files in the binding_affinity directory
-csv_files = [
-    f for f in list_repo_files(REPO, repo_type="dataset")
-    if f.startswith("binding_affinity/") and f.endswith("_benchmarking_data.csv")
-]
+Prereqs:
+  pip install tyro huggingface_hub
+  huggingface-cli login   # if the repo requires auth
 
-# 2. Load and concatenate all subsets
-all_splits = []
-for csv in tqdm(csv_files, desc="Loading CSVs"):
-    ds = load_dataset(REPO, data_files={ "data": csv }, split="train")
-    all_splits.append(ds)
-full_ds = concatenate_datasets(all_splits)
-print(full_ds)    # overview of the full dataset
+Usage:
+  python clone_abbibench_repo.py
+  python clone_abbibench_repo.py --dir /path/to/project
+"""
 
-# 3. Filter for samples belonging to influenza H1 (3gbn_h1)
-h1_ds = full_ds.filter(lambda x: x["antigen_id"].endswith("3gbn_h1"))
+from __future__ import annotations
 
-# 4. List PDB structure files corresponding to this antigen
-antigen_id     = "3gbn_h1"
-base_id        = antigen_id.split("_")[0]
-structure_files = [
-    f for f in list_repo_files(REPO, repo_type="dataset")
-    if f.startswith(f"structures/{base_id}") and f.endswith(".pdb")
-]
+from dataclasses import dataclass
+from pathlib import Path
 
-# 5. Download and parse each PDB using Biotite
-for pdb_file in structure_files:
-    local_pdb = hf_hub_download(
-        repo_id=REPO, filename=pdb_file, repo_type="dataset"
+import tyro
+from huggingface_hub import snapshot_download
+
+REPO_ID = "AbBibench/Antibody_Binding_Benchmark_Dataset"
+REVISION = "main"
+
+
+@dataclass(frozen=True)
+class Args:
+    # Root directory (default: current directory). Repo contents go to "<dir>/data".
+    dir: Path = Path(".")
+    # Re-download even if cached.
+    force: bool = False
+
+
+def main(args: Args) -> None:
+    root = args.dir.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+
+    out_dir = root / "data"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # This downloads the repository files (like a git clone), not Arrow cache artifacts.
+    snapshot_download(
+        repo_id=REPO_ID,
+        repo_type="dataset",
+        revision=REVISION,
+        local_dir=str(out_dir),
+        local_dir_use_symlinks=False,  # make real files under ./data
+        force_download=args.force,
     )
-    print("Downloaded to:", local_pdb)
-    atom_array = bsio.load_structure(local_pdb)
-    print("Chains:", atom_array.chain_id)
+
+    print(f"Downloaded repo to: {out_dir}")
+    print("Top-level entries:")
+    for p in sorted(out_dir.iterdir()):
+        print("  -", p.name)
+
+
+if __name__ == "__main__":
+    main(tyro.cli(Args))

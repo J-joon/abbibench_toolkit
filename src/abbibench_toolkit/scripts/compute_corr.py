@@ -11,7 +11,7 @@ def compute(model_name: str, dataset_name: dataset_name_t, metadata_path: Path =
     log_likelihood = pd.read_csv(result_path)
     # 3. compute spearman correlation
     rho, p_value = data_config.compute_correlation(log_likelihood)
-    print(f"rho: {rho:.4f}, p-value: {p_value:.4e}")
+    print(f"rho: {rho}, p-value: {p_value:.4e}")
     return
 
 def entrypoint():
